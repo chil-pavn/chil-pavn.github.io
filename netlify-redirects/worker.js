@@ -1,9 +1,25 @@
 /*
-  Example Cloudflare Worker to proxy /project1/* to a Netlify site and fall back to GitHub Pages for other paths.
-  Edit the two constants below to match your Netlify target and your GitHub Pages origin.
+  Cloudflare Worker: proxy multiple path prefixes to Netlify sites and fall back to GitHub Pages.
+  Routes configured below:
+    /gymmer  -> https://sage-phoenix-9e72d3.netlify.app
+    /reframe -> https://reframe-blog.netlify.app
+
+  How it works:
+  - Requests starting with a configured prefix are proxied to the corresponding Netlify origin.
+  - The worker preserves the remainder of the path and query string.
+  - Redirect Location headers from Netlify are rewritten so they continue to route through the worker path prefix.
+  - All other requests are fetched from the GitHub Pages origin.
+
+  Edit the GITHUB_PAGES_ORIGIN or ROUTES map if you change origins.
 */
 
 const GITHUB_PAGES_ORIGIN = 'https://chil-pavn.github.io';
+
+// Map path prefixes (starting with a leading slash) to Netlify origins
+const ROUTES = {
+  '/gymmer': 'https://sage-phoenix-9e72d3.netlify.app',
+  '/reframe': 'https://reframe-blog.netlify.app'
+};
 
 addEventListener('fetch', event => {
   event.respondWith(handle(event.request));
@@ -11,41 +27,46 @@ addEventListener('fetch', event => {
 
 async function handle(request) {
   const url = new URL(request.url);
-  // Route /project1/* to a Netlify site (change this to your Netlify URL)
-  if (url.pathname.startsWith('/project1')) {
-    const targetOrigin = 'https://your-netlify-site.netlify.app';
-    const newPath = url.pathname.replace('/project1', '') || '/';
+
+  // Find a matching route prefix (longest prefix wins)
+  const prefix = Object.keys(ROUTES).sort((a, b) => b.length - a.length).find(p => url.pathname.startsWith(p));
+
+  if (prefix) {
+    const targetOrigin = ROUTES[prefix];
+    const newPath = url.pathname.slice(prefix.length) || '/';
     const targetUrl = targetOrigin + newPath + url.search;
 
-    // Copy original headers and set Host to the target host
+    // Forward request to Netlify origin, keeping most headers
     const headers = new Headers(request.headers);
-    headers.set('host', new URL(targetOrigin).host);
+    // Set Host header to target host to help some origins
+    headers.set('Host', new URL(targetOrigin).host);
 
     const proxyReq = new Request(targetUrl, {
       method: request.method,
       headers,
       body: request.body,
-      redirect: 'follow'
+      redirect: 'manual'
     });
 
     const resp = await fetch(proxyReq);
 
-    // Optional: if the origin responded with a redirect, rewrite Location so it stays routed
+    // If the origin returned a redirect, rewrite Location to keep traffic routed through the worker
     if (resp.status >= 300 && resp.status < 400 && resp.headers.has('location')) {
       const location = resp.headers.get('location');
-      // If location points to the Netlify origin, rewrite it to keep the worker domain path prefix
-      if (location.startsWith(targetOrigin)) {
-        const rewritten = location.replace(targetOrigin, url.origin + '/project1');
+      if (location && location.startsWith(targetOrigin)) {
+        // Rewrite so: targetOrigin/some -> workerOrigin/prefix/some
+        const rewritten = location.replace(targetOrigin, url.origin + prefix);
         const headersOut = new Headers(resp.headers);
         headersOut.set('location', rewritten);
         return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers: headersOut });
       }
     }
 
+    // For non-redirect responses, return as-is. (You may want to rewrite HTML/absolute links here if needed.)
     return resp;
   }
 
-  // Fallback: fetch from your GitHub Pages origin
+  // No matching route: fetch from GitHub Pages origin
   const originUrl = GITHUB_PAGES_ORIGIN + url.pathname + url.search;
   const originReq = new Request(originUrl, request);
   return fetch(originReq);

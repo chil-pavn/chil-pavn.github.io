@@ -1,17 +1,27 @@
 # Netlify redirects for GitHub Pages
 
-This folder contains example redirect pages you can use on your GitHub Pages site to forward visitors to Netlify-hosted sites.
+This folder contains example redirect pages and a Cloudflare Worker example to forward visitors to Netlify-hosted sites.
 
-Why use these? GitHub Pages is a static host and cannot issue server-side 301/302 responses for custom path-based routing to other origins. These HTML pages perform a client-side redirect (meta refresh + JS fallback) which immediately sends the browser to your Netlify URL.
+Added redirects
 
-How to add a redirect for another project
+- /gymmer -> https://sage-phoenix-9e72d3.netlify.app/
+  - File: `gymmer/index.html`
+- /reframe -> https://reframe-blog.netlify.app/
+  - File: `reframe/index.html`
 
-1. Copy `netlify-redirects/project1/index.html` to a new folder named after your project, e.g. `netlify-redirects/project-name/index.html`.
-2. Edit the two places in the file that contain `https://your-netlify-site.netlify.app/` and replace them with your Netlify site URL (for example `https://my-cool-site.netlify.app/`).
-3. Commit the new folder and push. The redirect will be available at `https://chil-pavn.github.io/netlify-redirects/project-name/`.
+Cloudflare Worker
 
-Notes and limitations
+- The worker is at `netlify-redirects/worker.js` and is pre-configured to proxy:
+  - `/gymmer` -> `https://sage-phoenix-9e72d3.netlify.app`
+  - `/reframe` -> `https://reframe-blog.netlify.app`
+- Deploy this worker to a workers.dev subdomain (or attach it to a custom domain) to serve Netlify content under the same path prefixes.
 
-- This is a client-side redirect, not a server-side 301/302. For most users this behaves the same in the browser, but search engines may treat it differently.
-- If you want the URL in the browser to remain `chil-pavn.github.io/project-name/` while showing Netlify content, see the Cloudflare Worker instructions (`CLOUDFLARE_WORKER.md`) — that requires deploying a worker and (optionally) a custom domain or using a `workers.dev` subdomain.
-- Keep files in the path you want users to visit. For example, placing a redirect at `project1/index.html` makes it reachable at `/project1/` on GitHub Pages.
+Quick notes
+
+- The `gymmer` and `reframe` files are client-side redirects (meta-refresh + JS) and will immediately send visitors to the Netlify sites.
+- If you want the browser URL to stay under your GitHub Pages domain while serving Netlify content, deploy the Worker and access the worker domain (e.g., `https://<your-account>.workers.dev/gymmer`).
+
+If you'd like, I can:
+- Update links on your site to point to `/gymmer/` and `/reframe/`.
+- Add HTML that explains each project with a link + redirect.
+- Extend the Worker to rewrite absolute links inside HTML responses (useful if the proxied site uses absolute URLs).
